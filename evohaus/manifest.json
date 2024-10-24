@@ -1,0 +1,8 @@
+{
+  "domain": "evohaus_parking",
+  "name": "evohaus_parking",
+  "version": "0.0.1",
+  "documentation": "https://github.com/custom_components/places",
+  "codeowners": ["@ahmed0hazem"],
+  "requirements": []
+}
