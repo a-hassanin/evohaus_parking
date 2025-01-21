@@ -1,7 +1,7 @@
 #  Evohaus Parking
 Sensor to fetch electricity meter data for a parking space managed by evohaus
 
-# install
+# Installation Steps
 
 install with following steps:
 
