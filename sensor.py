@@ -1,17 +1,6 @@
 import logging
 import homeassistant
 
-import homeassistant.helpers.config_validation as cv
-import voluptuous as vol
-from homeassistant.const import STATE_UNKNOWN
-
-from homeassistant.components.sensor import (
-    PLATFORM_SCHEMA,
-    STATE_CLASS_MEASUREMENT,
-    STATE_CLASS_TOTAL_INCREASING,
-    STATE_CLASS_TOTAL,
-)
-
 from homeassistant.const import (
     CONF_NAME,
     CONF_SCAN_INTERVAL,
@@ -21,28 +10,27 @@ from homeassistant.const import (
     CURRENCY_CENT,
     UnitOfEnergy,
     UnitOfVolume,
+    STATE_UNKNOWN
 )
-from homeassistant.components.sensor import SensorEntity, SensorDeviceClass
 
-from homeassistant.exceptions import PlatformNotReady
+from homeassistant.components.sensor import SensorEntity, SensorDeviceClass, SensorStateClass, PLATFORM_SCHEMA
+from homeassistant.exceptions import PlatformNotReady, HomeAssistantError
 from homeassistant.util import Throttle
-from homeassistant.exceptions import HomeAssistantError
+import homeassistant.helpers.config_validation as cv
 
-_LOGGER = logging.getLogger(__name__)
-import requests
-import json
-
-from datetime import timedelta
 from bs4 import BeautifulSoup
-import re
 from cachetools import TTLCache
+from datetime import timedelta
+import json
+import requests
+import voluptuous as vol
 
 THROTTLE_INTERVAL_SECONDS = 100
-
 SCAN_INTERVAL = timedelta(minutes=15)
 THROTTLE_INTERVAL = timedelta(seconds=THROTTLE_INTERVAL_SECONDS)
-
 DEFAULT_NAME = "evohaus_parking"
+
+_LOGGER = logging.getLogger(__name__)
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     {
@@ -58,23 +46,7 @@ ELECTRIC_METER = {
     "unit": UnitOfEnergy.KILO_WATT_HOUR,
     "description": "Verbrauch Strom",
     "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
-}
-ELECTRIC_CONSUMPTION = {
-    "name": "electricity_consumption_parking",
-    "icon": "mdi:solar-power",
-    "unit": UnitOfEnergy.KILO_WATT_HOUR,
-    "query": "Stromverbrauch",
-    "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL,
-}
-TOTAL_ELECTRIC_CONSUMPTION = {
-    "name": "total_electricity_consumption_parking",
-    "icon": "mdi:solar-power",
-    "unit": UnitOfEnergy.KILO_WATT_HOUR,
-    "query": "Stromverbrauch",
-    "device_class": SensorDeviceClass.ENERGY,
-    "state_class": STATE_CLASS_TOTAL_INCREASING,
+    "state_class": SensorStateClass.TOTAL_INCREASING,
 }
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
@@ -299,56 +271,3 @@ class MeterSensor(EvoSensor):
 class ElectricityMeterSensor(MeterSensor):
     def __init__(self, evohaus):
         super().__init__(evohaus, ELECTRIC_METER)
-
-class ElectricTotalConsumptionSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, TOTAL_ELECTRIC_CONSUMPTION)
-        
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        attrs["total_cost_today"] = self._total_cost
-        return attrs
-
-    def parse_data(self):
-        electric_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        self._total_cost = 0
-        
-        for i in range(len(electric_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-            
-            if electric_data[0][i] != None:
-                self._state += electric_data[0][i]
-                self._total_cost += electric_data[0][i] * electric_data[2][i]
-                self._updateTime = str(electric_data[1][i]) + ":" + minute
-        
-class ElectricConsumptionSensor(EvoSensor):
-    def __init__(self, evohaus):
-        super().__init__(evohaus, ELECTRIC_CONSUMPTION)
-        
-    @property
-    def extra_state_attributes(self):
-        """Return the state attributes of the last update."""
-        attrs = super().extra_state_attributes
-        return attrs
-
-    def parse_data(self):
-        electric_data = self._evohaus.fetch_chart_data(self._config["query"])
-        self._state = 0
-        
-        for i in range(len(electric_data[1])):
-            if i % 4 == 0:
-                minute = "00"
-            else:
-                minute = str(int(i % 4 * 15))
-            
-            self._state = 0
-            
-            if electric_data[0][i] != None and i % 4 == 0 and i > 0:
-                self._state = electric_data[0][i-1] + electric_data[0][i-2] + electric_data[0][i-3] + electric_data[0][i-4]
-                self._updateTime = str(electric_data[1][i]) + ":" + minute
