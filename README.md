@@ -1,5 +1,6 @@
-#  evohaus
-Senor for evohaus electricity and water consumption
+#  Evohaus Parking
+Sensor to fetch electricity meter data for a parking space managed by evohaus
+
 # install
 
 install with following steps:
