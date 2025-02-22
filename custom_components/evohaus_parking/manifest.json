@@ -1,12 +1,17 @@
 {
   "domain": "evohaus_parking",
-  "name": "evohaus_parking",
+  "name": "Evohaus Parking",
   "version": "0.1.0",
-  "documentation": "https://github.com/a-hassanin/evohaus_parking",
-  "issue_tacker": "https://github.com/a-hassanin/evohaus_parking/issues",
+  "documentation": "https://github.com/a-hassanin/evohaus_home",
+  "issue_tacker": "https://github.com/a-hassanin/evohaus_home/issues",
   "codeowners": ["@a-hassain"],
-  "integration_type": "device",
   "iot_class": "cloud_polling",
-  "requirements": [],
+  "config_flow": true,
+  "requirements": [
+    "beautifulsoup4",
+    "cachetools",
+    "requests",
+    "voluptuous"
+  ],
   "dependencies": []
 }
