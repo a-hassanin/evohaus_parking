@@ -20,11 +20,11 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self._username = username
         self._password = password
-        self._residenceId = username.split("_")[0]
         self._cookie = None
         self._domain = "https://ems003.enocoo.com:48889/"
         self.cache = TTLCache(maxsize=1, ttl=THROTTLE_INTERVAL_SECONDS)
         self.hass = hass
+        self.residenceId = username.split("_")[0]
 
         super().__init__(
             hass,

@@ -29,10 +29,9 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
 class EvoSensor(CoordinatorEntity, SensorEntity):
     """Representation of a Evo Sensor."""
 
-    def __init__(self, coordinator, name, icon, tech_name="", unit=None, device_class=None, state_class=None):
+    def __init__(self, coordinator, name, icon, unit=None, device_class=None, state_class=None):
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_tech_name = tech_name
         self._attr_name = name
         self._attr_icon = icon
         self._attr_unit = unit
@@ -40,6 +39,7 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
         self._attr_state_class = state_class
         self._attr_native_value = None
         self._attr_extra_state_attributes = {}
+        self.entity_id = f"sensor.{name.lower().replace(' ', '_') + '_' + coordinator.residenceId.lower()}"
 
     @property
     def native_value(self):
@@ -73,19 +73,19 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
         )
 
 class MeterSensor(EvoSensor):
-    def __init__(self, coordinator, name, icon, tech_name, unit, device_class):
-        super().__init__(coordinator, name, icon, tech_name, unit, device_class, SensorStateClass.TOTAL_INCREASING)
+    def __init__(self, coordinator, name, icon, unit, device_class):
+        super().__init__(coordinator, name, icon, unit, device_class, SensorStateClass.TOTAL_INCREASING)
 
     async def async_update(self):
         """Get the latest data and update the state."""
         await super().async_update()
         meter_data = await self.coordinator.fetch_meter_data()
-        meter_data_extracted = self.extract_meter_data(meter_data, self._attr_tech_name)
+        meter_data_extracted = self.extract_meter_data(meter_data)
 
         self._attr_native_value = meter_data_extracted['state']
         self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
 
-    def extract_meter_data(self, meterData, meterType):
+    def extract_meter_data(self, meterData):
         rows = meterData.find_all("tr")
         row = {"state": 0, "meter_no": ""}
 
@@ -96,7 +96,7 @@ class MeterSensor(EvoSensor):
 
             unit = cols[0].contents[0]
             description = cols[1].contents[0].replace(" " + unit, "")
-            if description == meterType:
+            if "Verbrauch Strom E-Ladestation" in description:
                 row["state"] = float(
                     cols[4].contents[0].replace(".", "").replace(",", ".")
                 )
@@ -108,8 +108,8 @@ class MeterSensor(EvoSensor):
         return row
 
 class EnergyMeterSensor(MeterSensor):
-    def __init__(self, coordinator, name, icon, tech_name):
-        super().__init__(coordinator, name, icon, tech_name, UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY)
+    def __init__(self, coordinator, name, icon):
+        super().__init__(coordinator, name, icon, UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY)
 
     async def async_update(self):
         await super().async_update()
@@ -138,4 +138,4 @@ class ElectricityPriceEuroSensor(EvoSensor):
 
 class ElectricityMeterSensor(EnergyMeterSensor):
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity consumption", "mdi:meter-electric-outline", "Verbrauch Strom")
+        super().__init__(coordinator, "Electricity consumption", "mdi:meter-electric-outline")
