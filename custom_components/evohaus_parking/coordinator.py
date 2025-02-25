@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 import json
 from cachetools import TTLCache
 
-from .const import DOMAIN, THROTTLE_INTERVAL_SECONDS
+from .const import DOMAIN, THROTTLE_INTERVAL_SECONDS, SCAN_INTERVAL_MINUTES
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(seconds=THROTTLE_INTERVAL_SECONDS),
+            update_interval=timedelta(minutes=SCAN_INTERVAL_MINUTES),
         )
 
     async def _async_update_data(self):
@@ -38,8 +38,8 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             async with async_timeout.timeout(10):
                 await self.async_login()
-                await self.fetch_traffic_data()
-                return await self.fetch_meter_data()
+                return {"traffic": await self.fetch_traffic_data(), "meter": await self.fetch_meter_data()}
+
         except Exception as error:
             raise UpdateFailed(f"Error fetching data: {error}")
 
