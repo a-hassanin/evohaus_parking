@@ -12,6 +12,7 @@ from homeassistant.const import (
     UnitOfVolume
 )
 
+import re
 from .const import DOMAIN
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
@@ -79,17 +80,26 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
 
 class MeterSensor(EvoSensor):
     def __init__(self, coordinator, name, icon, unit, device_class):
-        super().__init__(coordinator, name, icon, unit, device_class, SensorStateClass.TOTAL_INCREASING)
+        meter_data_extracted = self._extract_meter_data(name, coordinator.data["meter"])
+        super().__init__(coordinator, name + ' ' + meter_data_extracted["parking_no"], icon, unit, device_class, SensorStateClass.TOTAL_INCREASING)
 
     @callback
     def _handle_coordinator_update(self):
-        meter_data_extracted = self.extract_meter_data(self.coordinator.data["meter"])
+        meter_data_extracted = self._extract_meter_data(self._attr_name, self.coordinator.data["meter"])
         if self._attr_native_value is None or meter_data_extracted["state"] > self._attr_native_value:
             self._attr_native_value = meter_data_extracted["state"]
             self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
-            super()._handle_coordinator_update()
 
-    def extract_meter_data(self, meter_data):
+        super()._handle_coordinator_update()
+
+    def _extract_parking_number(self, input_string):
+        match = re.search(r'TNr\s*(\d+)', input_string)
+        if match:
+            return match.group(1)
+        else:
+            return ''
+    
+    def _extract_meter_data(self, parking_name, meter_data):
         rows = meter_data.find_all("tr")
         row = {"state": 0, "meter_no": ""}
 
@@ -105,6 +115,7 @@ class MeterSensor(EvoSensor):
                     cols[4].contents[0].replace(".", "").replace(",", ".")
                 )
                 row["meter_no"] = cols[2].contents[0]
+                row["parking_no"] = self._extract_parking_number(description)
                 return row
             else:
                 continue
@@ -117,7 +128,7 @@ class EnergyMeterSensor(MeterSensor):
 
 class ElectricityPriceSensor(EvoSensor):
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity Price", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
+        super().__init__(coordinator, "Electricity Price", "mdi:currency-eur", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
     @callback
     def _handle_coordinator_update(self):
@@ -127,7 +138,7 @@ class ElectricityPriceSensor(EvoSensor):
 
 class ElectricityPriceEuroSensor(EvoSensor):
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", "", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
+        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
     @callback
     def _handle_coordinator_update(self):
@@ -137,4 +148,4 @@ class ElectricityPriceEuroSensor(EvoSensor):
 
 class ElectricityMeterSensor(EnergyMeterSensor):
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity consumption", "mdi:meter-electric-outline")
+        super().__init__(coordinator, "Electricity consumption parking", "mdi:meter-electric-outline")

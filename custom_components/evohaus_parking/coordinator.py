@@ -34,7 +34,6 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self):
-        """Fetch data from API endpoint."""
         try:
             async with async_timeout.timeout(10):
                 await self.async_login()
