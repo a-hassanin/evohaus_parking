@@ -127,7 +127,7 @@ class ElectricityPriceSensor(EvoSensor):
 
 class ElectricityPriceEuroSensor(EvoSensor):
     def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", "", f"{CURRENCY_CENT}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
+        super().__init__(coordinator, "Electricity Price Euro", "mdi:currency-eur", "", f"{CURRENCY_EURO}/{UnitOfEnergy.KILO_WATT_HOUR}", SensorDeviceClass.MONETARY)
 
     @callback
     def _handle_coordinator_update(self):
