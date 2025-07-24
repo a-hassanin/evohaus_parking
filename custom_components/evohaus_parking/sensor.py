@@ -20,6 +20,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
     coordinator = hass.data[DOMAIN][config_entry.entry_id]
 
     sensors = [
+        EvoSensor(coordinator, "Evohaus Parking", "mdi:parking", ""),
         ElectricityPriceSensor(coordinator),
         ElectricityPriceEuroSensor(coordinator),
         ElectricityMeterSensor(coordinator),
@@ -86,11 +87,12 @@ class MeterSensor(EvoSensor):
     @callback
     def _handle_coordinator_update(self):
         meter_data_extracted = self._extract_meter_data(self._attr_name, self.coordinator.data["meter"])
-        if self._attr_native_value is None or meter_data_extracted["state"] > self._attr_native_value:
-            self._attr_native_value = meter_data_extracted["state"]
-            self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
+        state = meter_data_extracted.get("state")
 
-        super()._handle_coordinator_update()
+        if state is not None and int(state) > 0 and (self._attr_native_value is None or state > self._attr_native_value):
+            self._attr_native_value = state
+            self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
+            super()._handle_coordinator_update()
 
     def _extract_parking_number(self, input_string):
         match = re.search(r'TNr\s*(\d+)', input_string)
@@ -132,9 +134,14 @@ class ElectricityPriceSensor(EvoSensor):
 
     @callback
     def _handle_coordinator_update(self):
-        self._attr_native_value = round(self.coordinator.data['traffic']["currentEnergyprice"], 2)
-        self._attr_extra_state_attributes["traffic_light"] = self.coordinator.data["traffic"]["color"]
-        super()._handle_coordinator_update()
+        traffic = self.coordinator.data.get("traffic")
+        raw_value_price = traffic.get("currentEnergyprice")
+        traffic_color = traffic.get("color")
+
+        if raw_value_price is not None:
+            self._attr_native_value = round(raw_value_price, 2)
+            self._attr_extra_state_attributes["traffic_light"] = traffic_color
+            super()._handle_coordinator_update()
 
 class ElectricityPriceEuroSensor(EvoSensor):
     def __init__(self, coordinator):
@@ -142,9 +149,14 @@ class ElectricityPriceEuroSensor(EvoSensor):
 
     @callback
     def _handle_coordinator_update(self):
-        self._attr_native_value = round(self.coordinator.data['traffic']["currentEnergyprice"] / 100, 2)
-        self._attr_extra_state_attributes["traffic_light"] = self.coordinator.data["traffic"]["color"]
-        super()._handle_coordinator_update()
+        traffic = self.coordinator.data.get("traffic")
+        raw_value_price = traffic.get("currentEnergyprice")
+        traffic_color = traffic.get("color")
+
+        if raw_value_price is not None:
+            self._attr_native_value = round(raw_value_price / 100, 2)
+            self._attr_extra_state_attributes["traffic_light"] = traffic_color
+            super()._handle_coordinator_update()
 
 class ElectricityMeterSensor(EnergyMeterSensor):
     def __init__(self, coordinator):
