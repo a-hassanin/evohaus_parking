@@ -23,7 +23,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
         EvoSensor(coordinator, "Evohaus Parking", "mdi:parking", ""),
         ElectricityPriceSensor(coordinator),
         ElectricityPriceEuroSensor(coordinator),
-        ElectricityMeterSensor(coordinator),
+        ParkingMeterSensor(coordinator),
     ]
 
     async_add_entities(sensors, True)
@@ -79,31 +79,54 @@ class EvoSensor(CoordinatorEntity, SensorEntity):
     def _handle_coordinator_update(self):
         self.async_write_ha_state()
 
-class MeterSensor(EvoSensor):
-    def __init__(self, coordinator, name, icon, unit, device_class):
-        meter_data_extracted = self._extract_meter_data(name, coordinator.data["meter"])
-        super().__init__(coordinator, name + ' ' + meter_data_extracted["parking_no"], icon, unit, device_class, SensorStateClass.TOTAL_INCREASING)
+class ParkingMeterSensor(EvoSensor):
+    def __init__(self, coordinator):
+        meter_data_extracted = self._extract_parking_meter_data(coordinator.data["meter"])
+        super().__init__(coordinator, "Electricity consumption parking " + meter_data_extracted["parking_number"], "mdi:meter-electric-outline", UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY, SensorStateClass.TOTAL_INCREASING)
 
     @callback
     def _handle_coordinator_update(self):
-        meter_data_extracted = self._extract_meter_data(self._attr_name, self.coordinator.data["meter"])
+        meter_data_extracted = self._extract_parking_meter_data(self.coordinator.data["meter"])
         state = meter_data_extracted.get("state")
 
         if state is not None and int(state) > 0 and (self._attr_native_value is None or state > self._attr_native_value):
             self._attr_native_value = state
-            self._attr_extra_state_attributes["meter_no"] = meter_data_extracted['meter_no']
+            self._attr_extra_state_attributes["meter_no"] = meter_data_extracted.get("meter_no")
+            self._attr_extra_state_attributes["parking_number"] = meter_data_extracted.get("parking_number")
+            self._attr_extra_state_attributes["parking_code"] = meter_data_extracted.get("parking_code")
             super()._handle_coordinator_update()
 
-    def _extract_parking_number(self, input_string):
-        match = re.search(r'TNr\s*(\d+)', input_string)
-        if match:
-            return match.group(1)
-        else:
-            return ''
+    def _extract_stellplatz_and_tn(self, input_string):
+        result = {
+            "stellplatz": "",
+            "tn": ""
+        }
     
-    def _extract_meter_data(self, parking_name, meter_data):
+        # Stellplatz: Stpl038, Stlp.242, STPL 12
+        stpl_match = re.search(
+            r'\bStpl\.?\s*(\d+)\b',
+            input_string,
+            re.IGNORECASE
+        )
+    
+        # T-Number: Tn 136, TNr 271
+        tn_match = re.search(
+            r'\bTnR?\s*(\d+)\b',
+            input_string,
+            re.IGNORECASE
+        )
+    
+        if stpl_match:
+            result["stellplatz"] = stpl_match.group(1)
+    
+        if tn_match:
+            result["tn"] = tn_match.group(1)
+    
+        return result
+    
+    def _extract_parking_meter_data(self, meter_data):
         rows = meter_data.find_all("tr")
-        row = {"state": 0, "meter_no": ""}
+        row = {"state": 0, "meter_no": "", "parking_number": "", "parking_code": ""}
 
         for raw_row in rows:
             cols = raw_row.find_all("td")
@@ -112,21 +135,24 @@ class MeterSensor(EvoSensor):
 
             unit = cols[0].contents[0]
             description = cols[1].contents[0].replace(" " + unit, "")
-            if "Verbrauch Strom E-Ladestation" in description:
+            
+            if "Verbrauch Strom" in description:
+                parking_data = self._extract_stellplatz_and_tn(unit)
+
+                if not bool(parking_data.get("stellplatz") and parking_data.get("tn")):
+                    continue
+                
                 row["state"] = float(
                     cols[4].contents[0].replace(".", "").replace(",", ".")
                 )
                 row["meter_no"] = cols[2].contents[0]
-                row["parking_no"] = self._extract_parking_number(description)
+                row["parking_number"] = parking_data.get("tn")
+                row["parking_code"] = parking_data.get("stellplatz")
                 return row
             else:
                 continue
 
         return row
-
-class EnergyMeterSensor(MeterSensor):
-    def __init__(self, coordinator, name, icon):
-        super().__init__(coordinator, name, icon, UnitOfEnergy.KILO_WATT_HOUR, SensorDeviceClass.ENERGY)
 
 class ElectricityPriceSensor(EvoSensor):
     def __init__(self, coordinator):
@@ -158,6 +184,4 @@ class ElectricityPriceEuroSensor(EvoSensor):
             self._attr_extra_state_attributes["traffic_light"] = traffic_color
             super()._handle_coordinator_update()
 
-class ElectricityMeterSensor(EnergyMeterSensor):
-    def __init__(self, coordinator):
-        super().__init__(coordinator, "Electricity consumption parking", "mdi:meter-electric-outline")
+
