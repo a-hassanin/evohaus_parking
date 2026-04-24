@@ -65,7 +65,12 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
     async def fetch_traffic_data(self):
         url = self._domain + "/php/getTrafficLightStatus.php"
         async with self._session.get(url, cookies=self._cookie) as response:
-            return json.loads(await response.text())
+            text = await response.text()
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                _LOGGER.warning("getTrafficLightStatus returned non-JSON response, skipping: %.100s", text)
+                return {}
 
     async def fetch_meter_data(self):
         """Fetch the meter data."""
