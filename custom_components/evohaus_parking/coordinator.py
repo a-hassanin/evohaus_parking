@@ -3,8 +3,8 @@ from datetime import timedelta
 import async_timeout
 import logging
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
+import aiohttp
 from bs4 import BeautifulSoup
 import json
 from cachetools import TTLCache
@@ -25,6 +25,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         self.cache = TTLCache(maxsize=1, ttl=THROTTLE_INTERVAL_SECONDS)
         self.hass = hass
         self.residenceId = username.split("_")[0]
+        self._session = aiohttp.ClientSession()
 
         super().__init__(
             hass,
@@ -47,7 +48,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         try:
             payload = {"user": self._username, "passwort": self._password}
             url = self._domain + "signinForm.php?mode=ok"
-            session = async_get_clientsession(self.hass)
+            session = self._session
             async with session.get(url) as response:
                 self._cookie = {"PHPSESSID": response.cookies.get("PHPSESSID")}
             async with session.post(url, data=payload, cookies=self._cookie):
@@ -57,25 +58,27 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         except Exception as error:
             raise Exception(f"Error logging in: {error}")
 
+    async def async_shutdown(self):
+        """Close the private HTTP session."""
+        await self._session.close()
+
     async def fetch_traffic_data(self):
         url = self._domain + "/php/getTrafficLightStatus.php"
-        session = async_get_clientsession(self.hass)
-        async with session.get(url, cookies=self._cookie) as response:
+        async with self._session.get(url, cookies=self._cookie) as response:
             return json.loads(await response.text())
 
     async def fetch_meter_data(self):
         """Fetch the meter data."""
         url = self._domain + "/php/newMeterTable.php"
-        now = dt_util.now()  # current date and time
+        now = dt_util.now()
         today = now.strftime("%Y-%m-%d")
         payload = {"dateParam": today}
-        session = async_get_clientsession(self.hass)
-        async with session.post(url, data=payload, cookies=self._cookie) as response:
+        async with self._session.post(url, data=payload, cookies=self._cookie) as response:
             return BeautifulSoup(await response.text(), "html.parser")
 
     async def fetch_chart_data(self, dataType):
         """Parse data."""
-        now = dt_util.now()  # current date and time
+        now = dt_util.now()
         today = now.strftime("%Y-%m-%d")
         url = (
                 self._domain
@@ -86,6 +89,5 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
                 + "&AreaId="
                 + self._residenceId
         )
-        session = async_get_clientsession(self.hass)
-        async with session.get(url, cookies=self._cookie) as response:
+        async with self._session.get(url, cookies=self._cookie) as response:
             return json.loads(await response.text())
