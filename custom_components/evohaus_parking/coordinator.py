@@ -16,6 +16,22 @@ _LOGGER = logging.getLogger(__name__)
 class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Evohaus data."""
 
+    @staticmethod
+    def _clean_json_payload(text):
+        """Normalize invalid unicode whitespace that can break JSON decoding."""
+        cleaned = text.translate(
+            str.maketrans(
+                {
+                    "\ufeff": "",  # UTF-8 BOM
+                    "\u00a0": " ",  # non-breaking space
+                    "\u202f": " ",  # narrow non-breaking space
+                    "\u2007": " ",  # figure space
+                    "\u2060": "",  # word joiner
+                }
+            )
+        )
+        return cleaned.strip()
+
     def __init__(self, hass, username, password):
         """Initialize."""
         self._username = username
@@ -67,7 +83,7 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         async with self._session.get(url, cookies=self._cookie) as response:
             text = await response.text()
             try:
-                return json.loads(text)
+                return json.loads(self._clean_json_payload(text))
             except json.JSONDecodeError:
                 _LOGGER.warning("getTrafficLightStatus returned non-JSON response, skipping: %.100s", text)
                 return {}
@@ -95,4 +111,4 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
                 + self._residenceId
         )
         async with self._session.get(url, cookies=self._cookie) as response:
-            return json.loads(await response.text())
+            return json.loads(self._clean_json_payload(await response.text()))
