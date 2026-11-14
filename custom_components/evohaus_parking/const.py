@@ -4,15 +4,13 @@ DOMAIN = "evohaus_parking"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 
-# Defaults
-DEFAULT_NAME = "Evohaus Parking"
-
 # API URLs
-API_LOGIN = "signinForm.php?mode=ok"
-API_RESIDENCE = "/php/ownConsumption.php"
-API_METER_DATA = "/php/newMeterTable.php"
-API_TRAFFIC = "/php/getTrafficLightStatus.php"
-API_CHART = "php/getMeterDataWithParam.php"
+API_BASE_URL = "https://ems003.enocoo.com:48889"
+API_LOGIN_PAGE = "/anmelden"
+API_LOGIN = "/anmelden?mode=ok"
+LOGIN_SUCCESS_PATH = "/start"
+API_METER_DATA = "/api/zaehlertabelle"
+API_TRAFFIC = "/api/ampel"
 
 # Update intervals
 THROTTLE_INTERVAL_SECONDS = 100

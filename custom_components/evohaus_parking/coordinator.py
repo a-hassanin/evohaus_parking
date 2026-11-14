@@ -3,13 +3,25 @@ from datetime import timedelta
 import async_timeout
 import logging
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
 import aiohttp
 from bs4 import BeautifulSoup
 import json
+from urllib.parse import urlsplit
 from cachetools import TTLCache
 
-from .const import DOMAIN, THROTTLE_INTERVAL_SECONDS, SCAN_INTERVAL_MINUTES
+from .const import (
+    API_BASE_URL,
+    API_LOGIN,
+    API_LOGIN_PAGE,
+    API_METER_DATA,
+    API_TRAFFIC,
+    DOMAIN,
+    LOGIN_SUCCESS_PATH,
+    THROTTLE_INTERVAL_SECONDS,
+    SCAN_INTERVAL_MINUTES,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,8 +48,6 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
         """Initialize."""
         self._username = username
         self._password = password
-        self._cookie = None
-        self._domain = "https://ems003.enocoo.com:48889/"
         self.cache = TTLCache(maxsize=1, ttl=THROTTLE_INTERVAL_SECONDS)
         self.hass = hass
         self.residenceId = username.split("_")[0]
@@ -60,27 +70,52 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error fetching data: {error}")
 
     async def async_login(self):
-        """Login to Evohaus and store session cookies."""
-        try:
-            payload = {"user": self._username, "passwort": self._password}
-            url = self._domain + "signinForm.php?mode=ok"
-            session = self._session
-            async with session.get(url) as response:
-                self._cookie = {"PHPSESSID": response.cookies.get("PHPSESSID")}
-            async with session.post(url, data=payload, cookies=self._cookie):
-                pass
-            if self._cookie is None:
-                raise Exception("Cannot login to Evohaus")
-        except Exception as error:
-            raise Exception(f"Error logging in: {error}")
+        """Log in using the session cookie and CSRF token from the login form."""
+        async with self._session.get(API_BASE_URL + API_LOGIN_PAGE) as response:
+            response.raise_for_status()
+            login_page = BeautifulSoup(await response.text(), "html.parser")
+            if response.url.path.rstrip("/") == LOGIN_SUCCESS_PATH:
+                if self._is_authenticated_page(login_page):
+                    return
+                raise HomeAssistantError("Evohaus login failed: start page is not authenticated")
+
+        token_input = login_page.select_one('input[name="csrf_token"]')
+        token = token_input.get("value") if token_input else None
+        if not isinstance(token, str) or not token:
+            raise HomeAssistantError("Evohaus login page did not contain a CSRF token")
+
+        payload = {
+            "user": self._username,
+            "passwort": self._password,
+            "csrf_token": token,
+        }
+        async with self._session.post(API_BASE_URL + API_LOGIN, data=payload) as response:
+            response.raise_for_status()
+            if "Ihre Anmeldedaten waren nicht korrekt" in await response.text():
+                raise HomeAssistantError("Evohaus login failed: credentials were rejected")
+
+        async with self._session.get(API_BASE_URL + LOGIN_SUCCESS_PATH) as response:
+            response.raise_for_status()
+            start_page = BeautifulSoup(await response.text(), "html.parser")
+            if response.url.path.rstrip("/") != LOGIN_SUCCESS_PATH or not self._is_authenticated_page(start_page):
+                raise HomeAssistantError("Evohaus login failed: start page is not authenticated")
+
+    @staticmethod
+    def _is_authenticated_page(page):
+        """Check the start page for the logout link shown to logged-in users."""
+        for link in page.select("a[href]"):
+            href = link.get("href")
+            if isinstance(href, str) and urlsplit(href).path.rstrip("/") == "/abmelden":
+                return True
+        return False
 
     async def async_shutdown(self):
         """Close the private HTTP session."""
         await self._session.close()
 
     async def fetch_traffic_data(self):
-        url = self._domain + "/php/getTrafficLightStatus.php"
-        async with self._session.get(url, cookies=self._cookie) as response:
+        url = API_BASE_URL + API_TRAFFIC
+        async with self._session.get(url) as response:
             text = await response.text()
             try:
                 return json.loads(self._clean_json_payload(text))
@@ -90,25 +125,9 @@ class EvohausDataUpdateCoordinator(DataUpdateCoordinator):
 
     async def fetch_meter_data(self):
         """Fetch the meter data."""
-        url = self._domain + "/php/newMeterTable.php"
+        url = API_BASE_URL + API_METER_DATA
         now = dt_util.now()
         today = now.strftime("%Y-%m-%d")
         payload = {"dateParam": today}
-        async with self._session.post(url, data=payload, cookies=self._cookie) as response:
+        async with self._session.post(url, data=payload) as response:
             return BeautifulSoup(await response.text(), "html.parser")
-
-    async def fetch_chart_data(self, dataType):
-        """Parse data."""
-        now = dt_util.now()
-        today = now.strftime("%Y-%m-%d")
-        url = (
-                self._domain
-                + "php/getMeterDataWithParam.php?from="
-                + today
-                + "&intVal=Tag&mClass="
-                + dataType
-                + "&AreaId="
-                + self._residenceId
-        )
-        async with self._session.get(url, cookies=self._cookie) as response:
-            return json.loads(self._clean_json_payload(await response.text()))
